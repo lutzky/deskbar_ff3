@@ -1,0 +1,3 @@
+The current deskbar (http://raphael.slinckx.net/deskbar/) applet for Firefox
+only support Firefox 1.x, 2.x. In Firefox 3, a new sqlite-based database is
+being used.
