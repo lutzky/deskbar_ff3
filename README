@@ -4,10 +4,9 @@ being used.
 
 The deskbar plugin only works with versions 2.20 and higher.
 
-Place (or, if you're developing - symlink) ff3.py AND deskbar_ff3.py in
+Place (or, if you're developing - symlink) deskbar_ff3.py in
 ~/.gnome2/deskbar-applet/modules-2.20-compatible/. Make sure to hit the
 "Reload" button within Deskbar preferences for the plugin to show up.
 
-For global installation:
-  * Put deskbar_ff3.py in /usr/lib/deskbar-applet/modules-2.20-compatible/
-  * Put ff3.py somewhere reachable ;)
+For global installation, put deskbar_ff3.py in
+/usr/lib/deskbar-applet/modules-2.20-compatible/
