@@ -46,7 +46,7 @@ def create_places_copy():
     return tempdir
 
 QUERY="""
-SELECT url, title FROM moz_places
+SELECT title, url FROM moz_places
 WHERE title LIKE ? OR url LIKE ? OR url LIKE ? OR url LIKE ?
 ORDER BY frecency DESC
 LIMIT 10
