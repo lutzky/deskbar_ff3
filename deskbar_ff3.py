@@ -2,6 +2,10 @@ import deskbar.core.Utils
 from deskbar.core.BrowserMatch import BrowserMatch
 import deskbar.interfaces.Module
 import deskbar.interfaces.Match
+
+import sys
+from os.path import expanduser
+sys.path.append(expanduser('~/.gnome2/deskbar-applet/modules-2.20-compatible/'))
 import ff3
 
 HANDLERS = ["Firefox3Module"]
@@ -17,6 +21,6 @@ class Firefox3Module(deskbar.interfaces.Module):
         deskbar.interfaces.Module.__init__ (self)
 
     def query (self, query):
-        self._emit_query_ready(query, 
-		[BrowserMatch(name, url) for (name, url) in ff3.query(query)]
-		)
+        results = [BrowserMatch(name, url, is_history = True) \
+                  for (name, url) in ff3.query(query)]
+        self._emit_query_ready(query, results)
