@@ -1,4 +1,4 @@
-import os.path, shutil, tempfile, sqlite3
+import os.path, shutil, sqlite3
 import deskbar.core.Utils
 from deskbar.core.BrowserMatch import BrowserMatch
 import deskbar.interfaces.Module
@@ -94,32 +94,30 @@ class Firefox3Module(deskbar.interfaces.Module):
             }
 
     def initialize(self):
-        self.tempdir = tempfile.mkdtemp()
-        self.places_db_fn = get_firefox_home_file('places.sqlite')
-        self.places_db_mtime = 0
-        self.places_db_conn = None
-
-    def stop(self):
-        self.places_db_conn.close()
-        shutil.rmtree(self.tempdir)
-
-    def get_cursor(self):
-        mtime = os.path.getmtime(self.places_db_fn)
-        if mtime > self.places_db_mtime:
-            shutil.copy(self.places_db_fn, self.tempdir)
-            if self.places_db_conn: self.places_db_conn.close()
-            self.places_db_conn = sqlite3.connect(os.path.join(self.tempdir, os.path.basename(self.places_db_fn)))
-            self.places_db_mtime = mtime
-        return self.places_db_conn.cursor()
+        self.places_db = get_firefox_home_file('places.sqlite')
+        self.places_db_copy = os.path.join(os.path.dirname(__file__), 'deskbar_ff3.sqlite')
+        self.places_db_lock = get_firefox_home_file('lock')
 
     def query_places(self, query):
-        c = self.get_cursor()
+        mtime = os.path.getmtime(self.places_db)
+        if os.path.isfile(self.places_db_copy):
+            mtime_copy = os.path.getmtime(self.places_db_copy)
+        else:
+            mtime_copy = 0
+        if mtime > mtime_copy and not os.path.islink(self.places_db_lock):
+            shutil.copy(self.places_db, self.places_db_copy)
+        if not os.path.isfile(self.places_db_copy):
+            return None
+        conn = sqlite3.connect(self.places_db_copy)
+        c = conn.cursor()
         q = "%%%s%%" % query
         c.execute(QUERY, (q, q, q))
         r = c.fetchall()
         c.close()
+        conn.close()
         return r
 
     def query(self, query):
-        results = [BrowserMatch(name, url) for (name, url, frecency) in self.query_places(query)]
-        self._emit_query_ready(query, results)
+        results = self.query_places(query)
+        if not results: return
+        self._emit_query_ready(query, [BrowserMatch(name, url) for (name, url, frecency) in results])
