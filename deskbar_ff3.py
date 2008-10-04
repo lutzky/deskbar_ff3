@@ -143,7 +143,14 @@ if __name__ == '__main__':
     import sys
     if "-v" in sys.argv:
         logging.getLogger().setLevel(logging.DEBUG)
+        sys.argv.remove("-v")
+
+    if len(sys.argv) < 2:
+        print "Usage: %s [query]" % __file__
+        sys.exit(1)
+
     logging.info("Deskbar FF3 at your service")
     querier = Firefox3Module()
     print "Results:"
-    print querier.query("Reader")
+    for name, url, number in querier.query_places(sys.argv[-1]):
+        print name
