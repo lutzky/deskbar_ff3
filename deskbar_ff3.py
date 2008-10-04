@@ -99,6 +99,7 @@ class Firefox3Module(deskbar.interfaces.Module):
             }
 
     def __init__(self):
+        deskbar.interfaces.Module.__init__(self)
         logging.debug("Initializing Firefox3Module")
         self.places_db = get_firefox_home_file('places.sqlite')
         self.places_db_copy = os.path.join(os.path.dirname(__file__), 'deskbar_ff3.sqlite')
@@ -136,7 +137,6 @@ class Firefox3Module(deskbar.interfaces.Module):
 
     def query(self, query):
         results = self.query_places(query)
-        if not results: return
         self._emit_query_ready(query, [BrowserMatch(name, url) for (name, url, frecency) in results])
 
 if __name__ == '__main__':
