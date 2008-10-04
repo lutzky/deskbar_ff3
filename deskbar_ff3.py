@@ -1,4 +1,10 @@
-import os.path, shutil, sqlite3
+#!/usr/bin/python
+import os.path
+import logging
+logging.getLogger().name = os.path.splitext(os.path.basename(__file__))[0]
+
+import shutil, sqlite3
+import deskbar.core.Categories # Fix for circular Utils-Cateogries dependency
 import deskbar.core.Utils
 from deskbar.core.BrowserMatch import BrowserMatch
 import deskbar.interfaces.Module
@@ -93,24 +99,36 @@ class Firefox3Module(deskbar.interfaces.Module):
             "version": "git-jmc",
             }
 
-    def initialize(self):
+    def __init__(self):
+        logging.debug("Initializing Firefox3Module")
         self.places_db = get_firefox_home_file('places.sqlite')
         self.places_db_copy = os.path.join(os.path.dirname(__file__), 'deskbar_ff3.sqlite')
         self.places_db_lock = get_firefox_home_file('lock')
 
     def query_places(self, query):
+        logging.debug("Entering query_places")
         mtime = os.path.getmtime(self.places_db)
-        if os.path.isfile(self.places_db_copy):
-            mtime_copy = os.path.getmtime(self.places_db_copy)
+        logging.debug("mtime for places DB is %s", mtime)
+        if not os.path.islink(self.places_db_lock):
+            logging.debug("Firefox not running, opening actual DB")
+            conn = sqlite3.connect(self.places_db)
         else:
-            mtime_copy = 0
-        if mtime > mtime_copy and not os.path.islink(self.places_db_lock):
-            shutil.copy(self.places_db, self.places_db_copy)
-        if not os.path.isfile(self.places_db_copy):
-            return None
-        conn = sqlite3.connect(self.places_db_copy)
+            if os.path.isfile(self.places_db_copy):
+                logging.debug("Found a places DB copy")
+                mtime_copy = os.path.getmtime(self.places_db_copy)
+            else:
+                logging.debug("No places DB copy found")
+                mtime_copy = 0
+            if mtime > mtime_copy:
+                logging.debug("Refreshing places DB copy")
+                shutil.copy(self.places_db, self.places_db_copy)
+            if not os.path.isfile(self.places_db_copy):
+                logging.warn("Copy of Places DB does not exist")
+                return None
+            conn = sqlite3.connect(self.places_db_copy)
         c = conn.cursor()
         q = "%%%s%%" % query
+        logging.debug("Executing query with parameter %s", q)
         c.execute(QUERY, (q, q, q))
         r = c.fetchall()
         c.close()
@@ -121,3 +139,12 @@ class Firefox3Module(deskbar.interfaces.Module):
         results = self.query_places(query)
         if not results: return
         self._emit_query_ready(query, [BrowserMatch(name, url) for (name, url, frecency) in results])
+
+if __name__ == '__main__':
+    import sys
+    if "-v" in sys.argv:
+        logging.getLogger().setLevel(logging.DEBUG)
+    logging.info("Deskbar FF3 at your service")
+    querier = Firefox3Module()
+    print "Results:"
+    print querier.query("Reader")
