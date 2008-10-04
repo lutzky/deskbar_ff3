@@ -64,9 +64,9 @@ QUERY="""
     union
 
     select
-        b.title,
-        p.url,
-        p.frecency
+        b.title title,
+        p.url url,
+        p.frecency frecency
     from
         moz_bookmarks b inner join
         moz_places p on b.fk = p.id
@@ -84,8 +84,7 @@ QUERY="""
                     t.title like ?
             )
 
-    order by
-        p.frecency desc
+    order by frecency desc
 
     limit 10
     """
