@@ -49,49 +49,44 @@ QUERY="""
         moz_bookmarks b inner join
         moz_places p on b.fk = p.id
     where
-        b.title like ? and
-        b.parent in (2,3,5)
-
-    union
-
-    select
-        b.title,
-        p.url,
-        p.frecency
-    from
-        moz_places p inner join
-        moz_bookmarks b on p.id = b.fk
-    where
-        b.parent in (2,3,5) and
-        p.url like ? and
-        p.hidden = 0
-
-    union
-
-    select
-        b.title title,
-        p.url url,
-        p.frecency frecency
-    from
-        moz_bookmarks b inner join
-        moz_places p on b.fk = p.id
-    where
-        b.parent in (1,2,3,4,5) and
-        b.fk in (
-            select
-                p.id
-            from
-                moz_bookmarks t inner join
-                moz_bookmarks b on t.id = b.parent inner join
-                moz_places p on b.fk = p.id
-            where
-                t.parent = 4 and
-                t.title like ?
+        (
+            b.title like ? and
+            b.parent in (2,3,5)
+        )
+        or
+        (
+            b.parent in (2,3,5) and
+            p.url like ? and
+            p.hidden = 0
+        )
+        or
+        (
+            b.parent in (1,2,3,4,5) and
+            b.fk in (
+                select
+                    p.id
+                from
+                    moz_bookmarks t inner join
+                    moz_bookmarks b on t.id = b.parent inner join
+                    moz_places p on b.fk = p.id
+                where
+                    t.parent = 4 and
+                    t.title like ?
+            )
         )
 
-    order by
-        frecency desc
+    union
 
+    select
+        title,
+        url,
+        frecency
+    from
+        moz_places
+    where
+        title like ? or url like ?
+
+    order by frecency desc
     limit 10
 """
 
@@ -145,7 +140,7 @@ class Firefox3Module(deskbar.interfaces.Module):
         c = conn.cursor()
         q = "%%%s%%" % query
         logging.debug("Executing query with parameter %s", q)
-        c.execute(QUERY, (q, q, q))
+        c.execute(QUERY, (q, q, q, q, q))
         r = c.fetchall()
         c.close()
         conn.close()
@@ -155,7 +150,7 @@ class Firefox3Module(deskbar.interfaces.Module):
         results = self.query_places(query)
         # if query didn't work, don't notify deskbar
         if not results: return
-        self._emit_query_ready(query, [BrowserMatch(name, url) for (name, url, frecency) in results])
+        self._emit_query_ready(query, [BrowserMatch(name + " - " + url, url) for (name, url, frecency) in results])
 
 if __name__ == '__main__':
     import sys
