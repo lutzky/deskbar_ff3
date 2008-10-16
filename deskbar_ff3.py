@@ -1,10 +1,15 @@
 #!/usr/bin/python
+
+# Firefox 3 places lookup module
+# Written by Ohad Lutzky <ohad@lutzky.net>
+# Many thanks to Jeremy Cantrell <jmcantrell@gmail.com>
+
 import os.path
 import logging
 logging.getLogger().name = os.path.splitext(os.path.basename(__file__))[0]
 
 import shutil, sqlite3
-import deskbar.core.Categories # Fix for circular Utils-Cateogries dependency
+import deskbar.core.Categories # Fix for circular Utils-Categories dependency
 import deskbar.core.Utils
 from deskbar.core.BrowserMatch import BrowserMatch
 import deskbar.interfaces.Module
@@ -96,7 +101,7 @@ class Firefox3Module(deskbar.interfaces.Module):
             "icon": deskbar.core.Utils.load_icon("firefox-3.0.png"),
             "name": "Firefox 3 Places",
             "description": "Search Firefox 3 Places",
-            "version": "git-jmc",
+            "version": "git",
             }
 
     def __init__(self):
