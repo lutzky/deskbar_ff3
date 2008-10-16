@@ -74,20 +74,21 @@ QUERY="""
         b.parent in (1,2,3,4,5) and
         b.fk in (
             select
-                    p.id
+                p.id
             from
-                    moz_bookmarks t inner join
-                    moz_bookmarks b on t.id = b.parent inner join
-                    moz_places p on b.fk = p.id
+                moz_bookmarks t inner join
+                moz_bookmarks b on t.id = b.parent inner join
+                moz_places p on b.fk = p.id
             where
-                    t.parent = 4 and
-                    t.title like ?
-            )
+                t.parent = 4 and
+                t.title like ?
+        )
 
-    order by frecency desc
+    order by
+        frecency desc
 
     limit 10
-    """
+"""
 
 class Firefox3Module(deskbar.interfaces.Module):
 
@@ -100,32 +101,34 @@ class Firefox3Module(deskbar.interfaces.Module):
 
     def __init__(self):
         deskbar.interfaces.Module.__init__(self)
-        logging.debug("Initializing Firefox3Module")
+        logging.debug("Initializing %s", __file__)
         self.places_db = get_firefox_home_file('places.sqlite')
         self.places_db_copy = os.path.join(os.path.dirname(__file__), 'deskbar_ff3.sqlite')
-        self.places_db_lock = get_firefox_home_file('lock')
+        self.copy_places_db()
+
+    def copy_places_db(self):
+        # Copying a locked database should still yield a valid database
+        # for us to work with, so there is no reason to check for the lock
+        shutil.copy(self.places_db, self.places_db_copy)
+
+    def is_db_copy_stale(self):
+        if not os.path.isfile(self.places_db_copy):
+            return True
+        else:
+            mtime = os.path.getmtime(self.places_db)
+            mtime_copy = os.path.getmtime(self.places_db_copy)
+            if mtime > mtime_copy: return True
+
+        return False
+
+    def refresh_places_db(self, force = False):
+        if force or self.is_db_copy_stale():
+            logging.debug("Refreshing places DB copy")
+            self.copy_places_db()
 
     def query_places(self, query):
-        logging.debug("Entering query_places")
-        mtime = os.path.getmtime(self.places_db)
-        logging.debug("mtime for places DB is %s", mtime)
-        if not os.path.islink(self.places_db_lock):
-            logging.debug("Firefox not running, opening actual DB")
-            conn = sqlite3.connect(self.places_db)
-        else:
-            if os.path.isfile(self.places_db_copy):
-                logging.debug("Found a places DB copy")
-                mtime_copy = os.path.getmtime(self.places_db_copy)
-            else:
-                logging.debug("No places DB copy found")
-                mtime_copy = 0
-            if mtime > mtime_copy:
-                logging.debug("Refreshing places DB copy")
-                shutil.copy(self.places_db, self.places_db_copy)
-            if not os.path.isfile(self.places_db_copy):
-                logging.warn("Copy of Places DB does not exist")
-                return None
-            conn = sqlite3.connect(self.places_db_copy)
+        self.refresh_places_db()
+        conn = sqlite3.connect(self.places_db_copy)
         c = conn.cursor()
         q = "%%%s%%" % query
         logging.debug("Executing query with parameter %s", q)
@@ -137,6 +140,8 @@ class Firefox3Module(deskbar.interfaces.Module):
 
     def query(self, query):
         results = self.query_places(query)
+        # if query didn't work, don't notify deskbar
+        if not results: return
         self._emit_query_ready(query, [BrowserMatch(name, url) for (name, url, frecency) in results])
 
 if __name__ == '__main__':
@@ -152,5 +157,9 @@ if __name__ == '__main__':
     logging.info("Deskbar FF3 at your service")
     querier = Firefox3Module()
     print "Results:"
-    for name, url, number in querier.query_places(sys.argv[-1]):
-        print name
+    results = querier.query_places(sys.argv[-1])
+    if not results:
+        print "No results"
+    else:
+        for name, url, number in results:
+            print name
