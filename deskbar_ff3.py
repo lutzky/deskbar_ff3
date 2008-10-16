@@ -104,6 +104,14 @@ class Firefox3Module(deskbar.interfaces.Module):
             "version": "git",
             }
 
+    @staticmethod
+    def has_requirements():
+        if os.path.isfile(get_firefox_home_file('places.sqlite')):
+            return True
+        else:
+            Firefox3Module.INSTRUCTIONS = "Firefox 3 must be used (places DB not found)"
+            return False
+
     def __init__(self):
         deskbar.interfaces.Module.__init__(self)
         logging.debug("Initializing %s", __file__)
