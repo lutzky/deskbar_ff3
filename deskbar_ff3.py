@@ -40,58 +40,70 @@ def get_firefox_home_file(needed_file):
 
     return os.path.join(firefox_dir, path, needed_file)
 
-QUERY="""
-    select
-        b.title,
-        p.url,
-        p.frecency
-    from
-        moz_bookmarks b inner join
-        moz_places p on b.fk = p.id
-    where
+QUERY_BASE="""
+select
+    ifnull(b.title,p.title), /* If we have a bookmark title, use it */
+    p.url,
+    p.frecency
+
+from
+    moz_places p left join
+    moz_bookmarks b on b.fk = p.id
+
+where
+    (
+        p.hidden = 0
+        and
         (
-            b.title like ? and
-            b.parent in (2,3,5)
-        )
-        or
-        (
-            b.parent in (2,3,5) and
-            p.url like ? and
-            p.hidden = 0
-        )
-        or
-        (
-            b.parent in (1,2,3,4,5) and
-            b.fk in (
-                select
-                    p.id
-                from
-                    moz_bookmarks t inner join
-                    moz_bookmarks b on t.id = b.parent inner join
-                    moz_places p on b.fk = p.id
-                where
-                    t.parent = 4 and
-                    t.title like ?
+            (
+                %(url_likeness)s
+            )
+            or
+            (
+                %(title_likeness)s
             )
         )
+    )
 
-    union
+    or
 
-    select
-        title,
-        url,
-        frecency
-    from
-        moz_places
-    where
-        title like ? or url like ?
+    (
+        %(tag_matches)s
+    )
 
-    order by frecency desc
-    limit 10
+group by p.id
+order by frecency desc
+limit 10;
 """
 
-class Firefox3Module(deskbar.interfaces.Module):
+TAG_SUBQUERY="""
+p.id in (
+    select
+    b.fk
+    from
+    moz_bookmarks tag inner join
+    moz_bookmarks b on tag.id = b.parent
+    where
+    tag.parent = 4 and /* tag is actually a tag, 4 is the root of all tags */
+    tag.title like ?
+)
+"""
 
+def construct_query(keywords):
+    """Construct a query for the given keywords. The query should return any
+    places with tags matching ALL keywords, in addition to any places whose
+    URL or title matches ALL keywords."""
+
+    result = QUERY_BASE % {
+            "url_likeness" : " and ".join("p.url like ?" for k in keywords),
+            "title_likeness" : " and ".join("ifnull(b.title, p.title) like ?" for k in keywords),
+            "tag_matches" : " and ".join(TAG_SUBQUERY for k in keywords),
+            }
+    logging.debug("Preparing query:\n%s", result)
+
+    return result
+
+class Firefox3Module(deskbar.interfaces.Module):
     INFOS = {
             "icon": deskbar.core.Utils.load_icon("firefox-3.0.png"),
             "name": "Firefox 3 Places",
@@ -112,6 +124,8 @@ class Firefox3Module(deskbar.interfaces.Module):
         logging.debug("Initializing %s", __file__)
         self.places_db = get_firefox_home_file('places.sqlite')
         self.places_db_copy = os.path.join(os.path.dirname(__file__), 'deskbar_ff3.sqlite')
+        logging.debug("My Places DB is at %s", self.places_db)
+        logging.debug("My Places DB copy is at %s", self.places_db_copy)
         self.copy_places_db()
 
     def copy_places_db(self):
@@ -138,9 +152,11 @@ class Firefox3Module(deskbar.interfaces.Module):
         self.refresh_places_db()
         conn = sqlite3.connect(self.places_db_copy)
         c = conn.cursor()
-        q = "%%%s%%" % query
-        logging.debug("Executing query with parameter %s", q)
-        c.execute(QUERY, (q, q, q, q, q))
+        keywords = [ "%%%s%%" % keyword for keyword in query.split() ]
+        query = construct_query(keywords)
+
+        logging.debug("Executing query with keywords %s", keywords)
+        c.execute(query, tuple(keywords * 3))
         r = c.fetchall()
         c.close()
         conn.close()
@@ -150,7 +166,16 @@ class Firefox3Module(deskbar.interfaces.Module):
         results = self.query_places(query)
         # if query didn't work, don't notify deskbar
         if not results: return
-        self._emit_query_ready(query, [BrowserMatch(name + " - " + url, url) for (name, url, frecency) in results])
+
+        # If our match has a name, display it and the url. Otherwise, just
+        # the URL.
+        matches = [
+                BrowserMatch(name and ("%s - %s" % (name, url))
+                    or url, url)
+                    for (name, url, frecency) in results
+                    ]
+
+        self._emit_query_ready(query, matches)
 
 if __name__ == '__main__':
     import sys
@@ -170,4 +195,7 @@ if __name__ == '__main__':
         print "No results"
     else:
         for name, url, number in results:
-            print name
+            if name:
+                print name, "-", url
+            else:
+                print url
