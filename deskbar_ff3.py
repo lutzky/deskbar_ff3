@@ -41,64 +41,79 @@ def get_firefox_home_file(needed_file):
     return os.path.join(firefox_dir, path, needed_file)
 
 QUERY_BASE="""
-select
-    ifnull(b.title,p.title), /* If we have a bookmark title, use it */
-    p.url,
-    p.frecency
-
-from
-    moz_places p left join
-    moz_bookmarks b on b.fk = p.id
-
-where
-    (
-        p.hidden = 0
-        and
-        (
-            (
-                %(url_likeness)s
-            )
-            or
-            (
-                %(title_likeness)s
-            )
-        )
-    )
-
-    or
-
-    (
-        %(tag_matches)s
-    )
-
-group by p.id
-order by frecency desc
-limit 10;
-"""
-
-TAG_SUBQUERY="""
-p.id in (
-    select
-    b.fk
+    select -- FOLDERS
+        b.title title,
+        p.url url,
+        p.frecency frecency
     from
-    moz_bookmarks tag inner join
-    moz_bookmarks b on tag.id = b.parent
+        moz_bookmarks x inner join
+        moz_bookmarks fb on x.id = fb.parent inner join
+        moz_bookmarks b on fb.fk = b.fk inner join
+        moz_places p on b.fk = p.id
     where
-    tag.parent = 4 and /* tag is actually a tag, 4 is the root of all tags */
-    tag.title like ?
-)
-"""
+        length(b.title) > 0 and
+        x.type = 2 and
+        %s
+
+    union
+
+    select -- URLS
+        b.title title,
+        x.url url,
+        x.frecency frecency
+    from
+        moz_bookmarks b inner join
+        moz_places x on b.fk = x.id
+    where
+        length(b.title) > 0 and
+        type = 1 and
+        %s
+
+    union
+
+    select -- TITLES
+        x.title title,
+        p.url url,
+        p.frecency frecency
+    from
+        moz_bookmarks x inner join
+        moz_places p on x.fk = p.id
+    where
+        length(x.title) > 0 and
+        x.type = 1 and
+        %s
+
+    union
+
+    select -- TAGS
+        b.title title,
+        p.url url,
+        p.frecency frecency
+    from
+        moz_bookmarks x inner join
+        moz_bookmarks tb on x.id = tb.parent inner join
+        moz_bookmarks b on b.fk = tb.fk inner join
+        moz_places p on b.fk = p.id
+    where
+        length(b.title) > 0 and
+        x.parent = 4 and
+        %s
+
+    order by
+        frecency desc
+    limit
+        10
+    ;"""
 
 def construct_query(keywords):
     """Construct a query for the given keywords. The query should return any
     places with tags matching ALL keywords, in addition to any places whose
     URL or title matches ALL keywords."""
 
-    result = QUERY_BASE % {
-            "url_likeness" : " and ".join("p.url like ?" for k in keywords),
-            "title_likeness" : " and ".join("ifnull(b.title, p.title) like ?" for k in keywords),
-            "tag_matches" : " and ".join(TAG_SUBQUERY for k in keywords),
-            }
+    where_title = " and ".join("x.title like ?" for k in keywords)
+    where_url = " and ".join("x.url like ?" for k in keywords)
+
+    result = QUERY_BASE % (where_title, where_url, where_title, where_title)
     logging.debug("Preparing query:\n%s", result)
 
     return result
@@ -154,9 +169,8 @@ class Firefox3Module(deskbar.interfaces.Module):
         c = conn.cursor()
         keywords = [ "%%%s%%" % keyword for keyword in query.split() ]
         query = construct_query(keywords)
-
         logging.debug("Executing query with keywords %s", keywords)
-        c.execute(query, tuple(keywords * 3))
+        c.execute(query, tuple(keywords * 4))
         r = c.fetchall()
         c.close()
         conn.close()
@@ -169,11 +183,7 @@ class Firefox3Module(deskbar.interfaces.Module):
 
         # If our match has a name, display it and the url. Otherwise, just
         # the URL.
-        matches = [
-                BrowserMatch(name and ("%s - %s" % (name, url))
-                    or url, url)
-                    for (name, url, frecency) in results
-                    ]
+        matches = [BrowserMatch(name or url, url) for name, url, frecency in results]
 
         self._emit_query_ready(query, matches)
 
@@ -195,7 +205,4 @@ if __name__ == '__main__':
         print "No results"
     else:
         for name, url, number in results:
-            if name:
-                print name, "-", url
-            else:
-                print url
+            print name or url
