@@ -41,9 +41,12 @@ def get_firefox_home_file(needed_file):
     return os.path.join(firefox_dir, path, needed_file)
 
 QUERY_BASE="""
+-- For completeness, use (places) left join (bookmarks) on b.fk = p.id,
+-- otherwise many results will be missing.
+
     select -- FOLDERS
-        b.title title,
-        p.url url,
+        b.title the_title,
+        p.url the_url,
         p.frecency frecency
     from
         moz_bookmarks x inner join
@@ -51,43 +54,43 @@ QUERY_BASE="""
         moz_bookmarks b on fb.fk = b.fk inner join
         moz_places p on b.fk = p.id
     where
-        length(b.title) > 0 and
+        length(the_title) > 0 and
         x.type = 2 and
         %s
 
     union
 
     select -- URLS
-        b.title title,
-        x.url url,
-        x.frecency frecency
+        ifnull(b.title,p.title) the_title,
+        p.url the_url,
+        p.frecency frecency
     from
-        moz_bookmarks b inner join
-        moz_places x on b.fk = x.id
+        moz_places p left join
+        moz_bookmarks b on b.fk = p.id
     where
-        length(b.title) > 0 and
-        type = 1 and
+        length(the_title) > 0
+--      and type = 1 and -- Do not limit to explicitly bookmarked sites
         %s
 
     union
 
     select -- TITLES
-        x.title title,
-        p.url url,
+        ifnull(b.title,p.title) the_title,
+        p.url the_url,
         p.frecency frecency
     from
-        moz_bookmarks x inner join
-        moz_places p on x.fk = p.id
+        moz_places p left join
+        moz_bookmarks b on b.fk = p.id
     where
-        length(x.title) > 0 and
-        x.type = 1 and
+        length(the_title) > 0
+--      and type = 1 and -- Do not limit to explicitly bookmarked sites
         %s
 
     union
 
     select -- TAGS
-        b.title title,
-        p.url url,
+        b.title the_title,
+        p.url the_url,
         p.frecency frecency
     from
         moz_bookmarks x inner join
@@ -101,6 +104,7 @@ QUERY_BASE="""
 
     order by
         frecency desc
+        -- TODO give precedence to explicitly bookmarked sites
     limit
         10
     ;"""
@@ -110,8 +114,8 @@ def construct_query(keywords):
     places with tags matching ALL keywords, in addition to any places whose
     URL or title matches ALL keywords."""
 
-    where_title = " and ".join("x.title like ?" for k in keywords)
-    where_url = " and ".join("x.url like ?" for k in keywords)
+    where_title = " and ".join("the_title like ?" for k in keywords)
+    where_url = " and ".join("the_url like ?" for k in keywords)
 
     result = QUERY_BASE % (where_title, where_url, where_title, where_title)
     logging.debug("Preparing query:\n%s", result)
@@ -183,7 +187,11 @@ class Firefox3Module(deskbar.interfaces.Module):
 
         # If our match has a name, display it and the url. Otherwise, just
         # the URL.
-        matches = [BrowserMatch(name or url, url) for name, url, frecency in results]
+        matches = [
+                BrowserMatch(name and ("%s - %s" % (name, url))
+                    or url, url)
+                for (name, url, frecency) in results
+                ]
 
         self._emit_query_ready(query, matches)
 
@@ -205,4 +213,7 @@ if __name__ == '__main__':
         print "No results"
     else:
         for name, url, number in results:
-            print name or url
+            if name:
+                print name, "-", url
+            else:
+                print url
