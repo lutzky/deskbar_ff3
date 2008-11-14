@@ -69,7 +69,8 @@ QUERY_BASE="""
         moz_bookmarks b on b.fk = p.id
     where
         length(the_title) > 0
---      and type = 1 and -- Do not limit to explicitly bookmarked sites
+--      and type = 1 -- Do not limit to explicitly bookmarked sites
+        and
         %s
 
     union
@@ -83,8 +84,8 @@ QUERY_BASE="""
         moz_bookmarks b on b.fk = p.id
     where
         length(the_title) > 0
---      and type = 1 and -- Do not limit to explicitly bookmarked sites
-        %s
+--      and type = 1 -- Do not limit to explicitly bookmarked sites
+        and %s
 
     union
 
