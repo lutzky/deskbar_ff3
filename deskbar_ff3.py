@@ -8,15 +8,18 @@ import os.path
 import logging
 logging.getLogger().name = os.path.splitext(os.path.basename(__file__))[0]
 
+import gtk
 import shutil, sqlite3
 import deskbar.core.Categories # Fix for circular Utils-Categories dependency
 import deskbar.core.Utils
 from deskbar.core.BrowserMatch import BrowserMatch
+from deskbar.core.GconfStore import GconfStore
 import deskbar.interfaces.Module
 import deskbar.interfaces.Match
 from ConfigParser import RawConfigParser
 
 HANDLERS = ["Firefox3Module"]
+GCONF_INCLUDE_URL_KEY = GconfStore.GCONF_DIR + '/deskbar_ff3/include_url'
 
 # Taken from mozilla.py of deskbar-applet 2.20
 def get_firefox_home_file(needed_file):
@@ -123,6 +126,39 @@ def construct_query(keywords):
 
     return result
 
+
+class Config(object):
+
+    def __init__(self):
+        self.gconf_client = GconfStore.get_instance().get_client()
+
+    def _get_include_url(self):
+        value = self.gconf_client.get_bool(GCONF_INCLUDE_URL_KEY)
+        if value is None: value = True
+        return value
+
+    def _set_include_url(self, value):
+        self.gconf_client.set_bool(GCONF_INCLUDE_URL_KEY, value)
+
+    include_url = property(_get_include_url, _set_include_url)
+
+
+class PreferencesDialog(gtk.Dialog):
+
+    def __init__(self, parent, config):
+        gtk.Dialog.__init__(self, "Mozilla Places Preferences", parent,
+                gtk.DIALOG_DESTROY_WITH_PARENT, (gtk.STOCK_CLOSE, gtk.RESPONSE_CLOSE))
+        self.config = config
+        cb = gtk.CheckButton("Include URL in Result?")
+        cb.connect("toggled", self._on_include_url_toggled)
+        cb.set_active(self.config.include_url)
+        self.vbox.pack_start(cb)
+        self.show_all()
+
+    def _on_include_url_toggled(self, widget):
+        self.config.include_url = widget.get_active()
+
+
 class Firefox3Module(deskbar.interfaces.Module):
     INFOS = {
             "icon": deskbar.core.Utils.load_icon("firefox-3.0.png"),
@@ -147,6 +183,7 @@ class Firefox3Module(deskbar.interfaces.Module):
         logging.debug("My Places DB is at %s", self.places_db)
         logging.debug("My Places DB copy is at %s", self.places_db_copy)
         self.copy_places_db()
+        self.config = Config()
 
     def copy_places_db(self):
         # Copying a locked database should still yield a valid database
@@ -188,13 +225,28 @@ class Firefox3Module(deskbar.interfaces.Module):
 
         # If our match has a name, display it and the url. Otherwise, just
         # the URL.
+
+        def result_title(name, url):
+            if not name:
+                return url
+            if self.config.include_url:
+                return "%s - %s" % (name, url)
+            return name
+
         matches = [
-                BrowserMatch(name and ("%s - %s" % (name, url))
-                    or url, url)
-                for (name, url, frecency) in results
+                BrowserMatch(result_title(name, url), url)
+                for name, url, frecency in results
                 ]
 
         self._emit_query_ready(query, matches)
+
+    def has_config(self):
+        return True
+
+    def show_config(self, parent):
+        dialog = PreferencesDialog(parent, self.config)
+        dialog.run()
+        dialog.destroy()
 
 if __name__ == '__main__':
     import sys
