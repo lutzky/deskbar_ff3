@@ -59,6 +59,7 @@ QUERY_BASE="""
     where
         length(the_title) > 0 and
         x.type = 2 and
+        hidden = 0 and
         %s
 
     union
@@ -73,8 +74,8 @@ QUERY_BASE="""
     where
         length(the_title) > 0
 --      and type = 1 -- Do not limit to explicitly bookmarked sites
-        and
-        %s
+        and hidden = 0
+        and %s
 
     union
 
@@ -88,6 +89,7 @@ QUERY_BASE="""
     where
         length(the_title) > 0
 --      and type = 1 -- Do not limit to explicitly bookmarked sites
+        and hidden = 0
         and %s
 
     union
@@ -104,6 +106,7 @@ QUERY_BASE="""
     where
         length(b.title) > 0 and
         x.parent = 4 and
+        hidden = 0 and
         %s
 
     order by
