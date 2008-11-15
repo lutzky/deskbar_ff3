@@ -20,6 +20,7 @@ from ConfigParser import RawConfigParser
 
 HANDLERS = ["Firefox3Module"]
 GCONF_INCLUDE_URL_KEY = GconfStore.GCONF_DIR + '/deskbar_ff3/include_url'
+GCONF_MAX_RESULTS_KEY = GconfStore.GCONF_DIR + '/deskbar_ff3/max_results'
 
 # Taken from mozilla.py of deskbar-applet 2.20
 def get_firefox_home_file(needed_file):
@@ -113,23 +114,6 @@ QUERY_TAGS = """
         %s
 """
 
-def construct_query(keywords):
-    """Construct a query for the given keywords. The query should return any
-    places with tags matching ALL keywords, in addition to any places whose
-    URL or title matches ALL keywords."""
-
-    queries = [
-            QUERY_FOLDERS % ' and '.join('f.title like ?' for k in keywords),
-            QUERY_URLS % ' and '.join('p.url like ?' for k in keywords),
-            QUERY_TITLES % ' and '.join('the_title like ?' for k in keywords),
-            QUERY_TAGS % ' and '.join('t.title like ?' for k in keywords)
-            ]
-
-    result = ' union '.join(queries) + ' order by the_frecency desc limit 10;'
-    logging.debug("Preparing query:\n%s", result)
-
-    return result
-
 
 class Config(object):
 
@@ -146,6 +130,16 @@ class Config(object):
 
     include_url = property(_get_include_url, _set_include_url)
 
+    def _get_max_results(self):
+        value = self.gconf_client.get_int(GCONF_MAX_RESULTS_KEY)
+        if not value: value = 10
+        return value
+
+    def _set_max_results(self, value):
+        self.gconf_client.set_int(GCONF_MAX_RESULTS_KEY, value)
+
+    max_results = property(_get_max_results, _set_max_results)
+
 
 class PreferencesDialog(gtk.Dialog):
 
@@ -157,10 +151,20 @@ class PreferencesDialog(gtk.Dialog):
         cb.connect("toggled", self._on_include_url_toggled)
         cb.set_active(self.config.include_url)
         self.vbox.pack_start(cb)
+        hbox = gtk.HBox()
+        hbox.pack_start(gtk.Label('Maximum Results:'))
+        sb = gtk.SpinButton(gtk.Adjustment(self.config.max_results, 1, 20, 1, 1))
+        sb.set_numeric(True)
+        sb.connect("value-changed", self._on_max_results_value_changed)
+        hbox.pack_start(sb)
+        self.vbox.pack_start(hbox)
         self.show_all()
 
     def _on_include_url_toggled(self, widget):
         self.config.include_url = widget.get_active()
+
+    def _on_max_results_value_changed(self, widget):
+        self.config.max_results = widget.get_value_as_int()
 
 
 class Firefox3Module(deskbar.interfaces.Module):
@@ -214,7 +218,7 @@ class Firefox3Module(deskbar.interfaces.Module):
         conn = sqlite3.connect(self.places_db_copy)
         c = conn.cursor()
         keywords = [ "%%%s%%" % keyword for keyword in query.split() ]
-        query = construct_query(keywords)
+        query = self.construct_query(keywords)
         logging.debug("Executing query with keywords %s", keywords)
         c.execute(query, tuple(keywords * 4))
         r = c.fetchall()
@@ -251,6 +255,26 @@ class Firefox3Module(deskbar.interfaces.Module):
         dialog = PreferencesDialog(parent, self.config)
         dialog.run()
         dialog.destroy()
+
+    def construct_query(self, keywords):
+        """Construct a query for the given keywords. The query should return any
+        places with tags matching ALL keywords, in addition to any places whose
+        URL or title matches ALL keywords."""
+
+        queries = [
+                QUERY_FOLDERS % ' and '.join('f.title like ?' for k in keywords),
+                QUERY_URLS % ' and '.join('p.url like ?' for k in keywords),
+                QUERY_TITLES % ' and '.join('the_title like ?' for k in keywords),
+                QUERY_TAGS % ' and '.join('t.title like ?' for k in keywords)
+                ]
+
+        orderby = " order by the_frecency desc, the_title"
+        limit = 'limit %s' % self.config.max_results
+        result = ' '.join([' union '.join(queries), orderby, limit]) + ';'
+        logging.debug("Preparing query:\n%s", result)
+
+        return result
+
 
 if __name__ == '__main__':
     import sys
