@@ -43,88 +43,89 @@ def get_firefox_home_file(needed_file):
 
     return os.path.join(firefox_dir, path, needed_file)
 
-QUERY_BASE="""
--- For completeness, use (places) left join (bookmarks) on b.fk = p.id,
--- otherwise many results will be missing.
-
-    select -- FOLDERS
+QUERY_FOLDERS = """
+    select
         b.title the_title,
         p.url the_url,
-        p.frecency frecency
+        p.frecency the_frecency
     from
-        moz_bookmarks x inner join
-        moz_bookmarks fb on x.id = fb.parent inner join
+        moz_bookmarks f inner join
+        moz_bookmarks fb on f.id = fb.parent inner join
         moz_bookmarks b on fb.fk = b.fk inner join
         moz_places p on b.fk = p.id
     where
-        length(the_title) > 0 and
-        x.type = 2 and
-        hidden = 0 and
+        length(b.title) > 0 and
+        length(p.rev_host) > 0 and
+        f.type = 2 and
+        p.hidden = 0 and
         %s
+"""
 
-    union
-
-    select -- URLS
-        ifnull(b.title,p.title) the_title,
+QUERY_URLS = """
+    select
+        coalesce(b.title, p.title) the_title,
         p.url the_url,
-        p.frecency frecency
+        p.frecency the_frecency
     from
-        moz_places p left join
-        moz_bookmarks b on b.fk = p.id
+        moz_places p left outer join
+        moz_bookmarks b on p.id = b.fk left outer join
+        moz_bookmarks bp on bp.id = b.parent
     where
-        length(the_title) > 0
---      and type = 1 -- Do not limit to explicitly bookmarked sites
-        and hidden = 0
-        and %s
+        length(p.rev_host) > 0 and
+        bp.parent <> 4 and
+        p.hidden = 0 and
+        %s
+"""
 
-    union
-
-    select -- TITLES
-        ifnull(b.title,p.title) the_title,
+QUERY_TITLES = """
+    select
+        coalesce(b.title, p.title) the_title,
         p.url the_url,
-        p.frecency frecency
+        p.frecency the_frecency
     from
-        moz_places p left join
-        moz_bookmarks b on b.fk = p.id
+        moz_places p left outer join
+        moz_bookmarks b on p.id = b.fk left outer join
+        moz_bookmarks bp on bp.id = b.parent
     where
-        length(the_title) > 0
---      and type = 1 -- Do not limit to explicitly bookmarked sites
-        and hidden = 0
-        and %s
+        length(the_title) > 0 and
+        length(p.rev_host) > 0 and
+        bp.parent <> 4 and
+        p.hidden = 0 and
+        %s
+"""
 
-    union
-
-    select -- TAGS
-        b.title the_title,
+QUERY_TAGS = """
+    select
+        coalesce(b.title, p.title) the_title,
         p.url the_url,
-        p.frecency frecency
+        p.frecency the_frecency
     from
-        moz_bookmarks x inner join
-        moz_bookmarks tb on x.id = tb.parent inner join
+        moz_bookmarks t inner join
+        moz_bookmarks tb on t.id = tb.parent inner join
         moz_bookmarks b on b.fk = tb.fk inner join
+        moz_bookmarks bp on b.parent = bp.id inner join
         moz_places p on b.fk = p.id
     where
-        length(b.title) > 0 and
-        x.parent = 4 and
-        hidden = 0 and
+        length(p.rev_host) > 0 and
+        bp.parent <> 4 and
+        t.parent = 4 and
+        p.hidden = 0 and
         %s
-
-    order by
-        frecency desc
-        -- TODO give precedence to explicitly bookmarked sites
-    limit
-        10
-    ;"""
+"""
 
 def construct_query(keywords):
     """Construct a query for the given keywords. The query should return any
     places with tags matching ALL keywords, in addition to any places whose
     URL or title matches ALL keywords."""
 
-    where_title = " and ".join("the_title like ?" for k in keywords)
-    where_url = " and ".join("the_url like ?" for k in keywords)
+    queries = [
+            QUERY_FOLDERS % ' and '.join('f.title like ?' for k in keywords),
+            QUERY_URLS % ' and '.join('p.url like ?' for k in keywords),
+            QUERY_TITLES % ' and '.join('the_title like ?' for k in keywords),
+            QUERY_TAGS % ' and '.join('t.title like ?' for k in keywords)
+            ]
 
-    result = QUERY_BASE % (where_title, where_url, where_title, where_title)
+    result = ' union '.join(queries) + ' order by the_frecency desc limit 10;'
     logging.debug("Preparing query:\n%s", result)
 
     return result
