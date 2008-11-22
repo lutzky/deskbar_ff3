@@ -73,7 +73,7 @@ QUERY_URLS = """
         moz_bookmarks bp on bp.id = b.parent
     where
         length(p.rev_host) > 0 and
-        bp.parent <> 4 and
+        (bp.parent <> 4 or b.id is null) and
         p.hidden = 0 and
         %s
 """
@@ -90,7 +90,7 @@ QUERY_TITLES = """
     where
         length(the_title) > 0 and
         length(p.rev_host) > 0 and
-        bp.parent <> 4 and
+        (bp.parent <> 4 or b.id is null) and
         p.hidden = 0 and
         %s
 """
@@ -108,7 +108,7 @@ QUERY_TAGS = """
         moz_places p on b.fk = p.id
     where
         length(p.rev_host) > 0 and
-        bp.parent <> 4 and
+        (bp.parent <> 4 or b.id is null) and
         t.parent = 4 and
         p.hidden = 0 and
         %s
