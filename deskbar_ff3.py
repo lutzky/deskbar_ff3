@@ -48,7 +48,8 @@ QUERY_FOLDERS = """
     select
         b.title the_title,
         p.url the_url,
-        p.frecency the_frecency
+        p.frecency the_frecency,
+        b.id is not NULL is_bookmark
     from
         moz_bookmarks f inner join
         moz_bookmarks fb on f.id = fb.parent inner join
@@ -66,7 +67,8 @@ QUERY_URLS = """
     select
         coalesce(b.title, p.title) the_title,
         p.url the_url,
-        p.frecency the_frecency
+        p.frecency the_frecency,
+        b.id is not NULL is_bookmark
     from
         moz_places p left outer join
         moz_bookmarks b on p.id = b.fk left outer join
@@ -82,7 +84,8 @@ QUERY_TITLES = """
     select
         coalesce(b.title, p.title) the_title,
         p.url the_url,
-        p.frecency the_frecency
+        p.frecency the_frecency,
+        b.id is not NULL is_bookmark
     from
         moz_places p left outer join
         moz_bookmarks b on p.id = b.fk left outer join
@@ -99,7 +102,8 @@ QUERY_TAGS = """
     select
         coalesce(b.title, p.title) the_title,
         p.url the_url,
-        p.frecency the_frecency
+        p.frecency the_frecency,
+        b.id is not NULL is_bookmark
     from
         moz_bookmarks t inner join
         moz_bookmarks tb on t.id = tb.parent inner join
@@ -242,8 +246,9 @@ class Firefox3Module(deskbar.interfaces.Module):
             return name
 
         matches = [
-                BrowserMatch(result_title(name, url), url)
-                for name, url, frecency in results
+                BrowserMatch(result_title(name, url), url,
+                                is_history = not is_bookmark)
+                for name, url, frecency, is_bookmark in results
                 ]
 
         self._emit_query_ready(query, matches)
@@ -293,7 +298,12 @@ if __name__ == '__main__':
     if not results:
         print "No results"
     else:
-        for name, url, number in results:
+        for name, url, number, is_bookmark in results:
+            if is_bookmark:
+                print "[*]",
+            else:
+                print "   ",
+
             if name:
                 print name, "-", url
             else:
