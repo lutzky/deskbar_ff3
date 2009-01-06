@@ -8,6 +8,8 @@ import os.path
 import logging
 logging.getLogger().name = os.path.splitext(os.path.basename(__file__))[0]
 
+import urllib
+
 import gtk
 import shutil, sqlite3
 import deskbar.core.Categories # Fix for circular Utils-Categories dependency
@@ -118,6 +120,55 @@ QUERY_TAGS = """
         %s
 """
 
+class FirefoxSearchJson:
+    def __init__(self, search_json_filename):
+        import json
+        json_file = open(search_json_filename, "r")
+        json_data = json_file.read()
+        json_file.close()
+        data = json.read(json_data)
+        self.engines = []
+
+        for source, engine_data in data.items():
+            if isinstance(engine_data, dict) and "engines" in engine_data:
+                self.engines.extend(engine_data["engines"])
+
+    def get_engine_urls(self, engine, suggestions = False):
+        def is_suggestion(url):
+            return "type" in url and url["type"] == "application/x-suggestions+json"
+
+        return filter(lambda x: is_suggestion(x) == suggestions, engine["_urls"])
+
+    def place_terms(self, s, query):
+        _s = s
+        for escape_sequence in ["{searchTerms}", "{SearchTerms}"]:
+            _s = _s.replace(escape_sequence, query)
+        return _s
+
+    def param_list_to_dict(self, param_list, query):
+        d = {}
+        for param in param_list:
+            # TODO some engines have trueValue, falseValue and a condition.
+            # See google suggest.
+            if "value" in param:
+                d[param["name"]] = self.place_terms(param["value"], query)
+        return d
+
+    def search_urls_for(self, query, suggestions = False):
+        for engine in self.engines:
+            for url in self.get_engine_urls(engine, suggestions):
+                if url["params"]:
+                    param_string = "?%s" % \
+                            urllib.urlencode( \
+                            self.param_list_to_dict(url["params"], query) \
+                            )
+                else:
+                    param_string = ""
+
+                search_url = self.place_terms("%s%s" % (url["template"], \
+                        param_string), query)
+
+                yield search_url
 
 class Config(object):
 
@@ -192,6 +243,7 @@ class Firefox3Module(deskbar.interfaces.Module):
         logging.debug("Initializing %s", __file__)
         self.places_db = get_firefox_home_file('places.sqlite')
         self.places_db_copy = os.path.join(os.path.dirname(__file__), 'deskbar_ff3.sqlite')
+        self.json_searcher = FirefoxSearchJson(get_firefox_home_file('search.json'))
         logging.debug("My Places DB is at %s", self.places_db)
         logging.debug("My Places DB copy is at %s", self.places_db_copy)
         self.copy_places_db()
@@ -229,6 +281,9 @@ class Firefox3Module(deskbar.interfaces.Module):
         c.close()
         conn.close()
         return r
+
+    def query_searches(self, query):
+        return self.json_searcher.search_urls_for(query)
 
     def query(self, query):
         results = self.query_places(query)
