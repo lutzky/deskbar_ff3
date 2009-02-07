@@ -14,7 +14,7 @@ import gtk
 import shutil, sqlite3
 import deskbar.core.Categories # Fix for circular Utils-Categories dependency
 import deskbar.core.Utils
-from deskbar.core.BrowserMatch import BrowserMatch
+from deskbar.core.BrowserMatch import BrowserMatch, BrowserSmartMatch
 from deskbar.core.GconfStore import GconfStore
 import deskbar.interfaces.Module
 import deskbar.interfaces.Match
@@ -154,7 +154,7 @@ class FirefoxSearchJson:
                 d[param["name"]] = self.place_terms(param["value"], query)
         return d
 
-    def search_urls_for(self, query, suggestions = False):
+    def searches_for(self, query, suggestions = False):
         for engine in [ x for x in self.engines if not x.get("hidden") ]:
             for url in self.get_engine_urls(engine, suggestions):
                 if url["params"]:
@@ -168,7 +168,7 @@ class FirefoxSearchJson:
                 search_url = self.place_terms("%s%s" % (url["template"], \
                         param_string), query)
 
-                yield search_url
+                yield (engine["_name"], search_url)
 
 class Config(object):
 
@@ -283,7 +283,7 @@ class Firefox3Module(deskbar.interfaces.Module):
         return r
 
     def query_searches(self, query):
-        return self.json_searcher.search_urls_for(query)
+        return self.json_searcher.searches_for(query)
 
     def query(self, query):
         results = self.query_places(query)
@@ -305,6 +305,12 @@ class Firefox3Module(deskbar.interfaces.Module):
                                 is_history = not is_bookmark)
                 for name, url, frecency, is_bookmark in results
                 ]
+
+        matches += [
+                BrowserSmartMatch(name=name, url=url,
+                    bookmark=BrowserMatch(name,url))
+                    for (name, url) in self.query_searches(query)
+                    ]
 
         self._emit_query_ready(query, matches)
 
@@ -367,8 +373,8 @@ if __name__ == '__main__':
     querier = Firefox3Module()
 
     if options.search_urls:
-        for search_url in list(querier.query_searches(sys.argv[-1])):
-            print search_url
+        for name, url in list(querier.query_searches(sys.argv[-1])):
+            print url, name
         sys.exit(0)
 
     if options.places:
@@ -385,8 +391,8 @@ if __name__ == '__main__':
     # everything.
 
     print "Searches:"
-    for search_url in list(querier.query_searches(args[0])):
-        print "   ", search_url
+    for name, search_url in list(querier.query_searches(args[0])):
+        print "   ", name, "-", search_url
 
     print ""
 
