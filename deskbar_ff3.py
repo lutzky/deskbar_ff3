@@ -155,7 +155,7 @@ class FirefoxSearchJson:
         return d
 
     def search_urls_for(self, query, suggestions = False):
-        for engine in self.engines:
+        for engine in [ x for x in self.engines if not x.get("hidden") ]:
             for url in self.get_engine_urls(engine, suggestions):
                 if url["params"]:
                     param_string = "?%s" % \
