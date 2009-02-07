@@ -338,28 +338,68 @@ class Firefox3Module(deskbar.interfaces.Module):
 
 if __name__ == '__main__':
     import sys
-    if "-v" in sys.argv:
-        logging.getLogger().setLevel(logging.DEBUG)
-        sys.argv.remove("-v")
+    import optparse
 
-    if len(sys.argv) < 2:
-        print "Usage: %s [query]" % __file__
-        sys.exit(1)
+    parser = optparse.OptionParser("usage: %prog [options] [query]")
+    parser.add_option("-v", "--verbose", dest="verbose",
+            help="Increase verbosity", action="store_true", default=False)
+    parser.add_option("--search-urls", dest="search_urls",
+            help="Only show search URLs", action="store_true", default=False)
+    parser.add_option("--places", dest="places",
+            help="Only show places (URLs followed by names)",
+            action="store_true", default=False)
+    parser.add_option("--no-history", dest="history",
+            help="Only show explicitly starred URLs", action="store_false",
+            default=True)
+    options, args = parser.parse_args()
+
+    if options.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if options.places and options.search_urls:
+        parser.error("Please choose either --places or --search-urls "
+            "(or neither)")
+
+    if len(args) < 1:
+        parser.error("No query string specified")
 
     logging.info("Deskbar FF3 at your service")
     querier = Firefox3Module()
+
+    if options.search_urls:
+        for search_url in list(querier.query_searches(sys.argv[-1])):
+            print search_url
+        sys.exit(0)
+
+    if options.places:
+        results = querier.query_places(args[0])
+        for name, url, number, is_bookmarks in results:
+            if options.history or is_bookmarks:
+                if name:
+                    print url, name
+                else:
+                    print url
+        sys.exit(0)
+
+    # Neither places or search urls were explicitly requested, print
+    # everything.
+
+    print "Searches:"
+    for search_url in list(querier.query_searches(args[0])):
+        print "   ", search_url
+
+    print ""
+
     print "Results:"
-    results = querier.query_places(sys.argv[-1])
+    results = querier.query_places(args[0])
     if not results:
         print "No results"
     else:
         for name, url, number, is_bookmark in results:
-            if is_bookmark:
-                print "[*]",
-            else:
-                print "   ",
+            if is_bookmark or options.history:
+                display_form = "%s%s" % (
+                        is_bookmark and "[*]" or "   ",
+                        name and "%s - %s" % (name, url) or url
+                        )
 
-            if name:
-                print name, "-", url
-            else:
-                print url
+                print display_form
