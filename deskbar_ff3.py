@@ -126,7 +126,12 @@ class FirefoxSearchJson:
         json_file = open(search_json_filename, "r")
         json_data = json_file.read()
         json_file.close()
-        data = json.read(json_data)
+
+        try:
+            data = json.loads(json_data)
+        except AttributeError, e:
+            data = json.read(json_data)
+
         self.engines = []
 
         for source, engine_data in data.items():
@@ -232,6 +237,10 @@ class Firefox3Module(deskbar.interfaces.Module):
 
     @staticmethod
     def has_requirements():
+        try:
+            import json
+        except ImportError:
+            Firefox3Module.INSTRUCTIONS = "You must have the json module (included in Python >= 2.6)"
         if os.path.isfile(get_firefox_home_file('places.sqlite')):
             return True
         else:
